@@ -1,4 +1,4 @@
-#define SHAPEOP_HEADER_ONLY
+
 #include <libShapeOp/src/Solver.h>
 #include <libShapeOp/src/Constraint.h>
 

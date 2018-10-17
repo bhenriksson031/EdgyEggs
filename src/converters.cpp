@@ -1,3 +1,4 @@
+
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
@@ -86,6 +87,54 @@ void detail_to_eigen(const GU_Detail &gdp, Eigen::MatrixXd &points,\
        }
    }
 }
+//gets point attrib values into an Eigen matrix consistent with matrices from detail_to_eigen function above
+void attribPointF_to_eigen(const GU_Detail &gdp, Eigen::VectorXd &vec, GA_RWHandleF &attrib)
+{
+	vec.resize(static_cast<uint>(gdp.getNumPoints()), 1);
+	GA_Offset ptoff;
+	GA_FOR_ALL_PTOFF(&gdp, ptoff) {
+		vec(static_cast<uint>(ptoff), 0) = attrib.get(ptoff); //TODO fix this
+	}
+	//TODO add error handling
+}
+
+//gets point attrib values into an Eigen matrix consistent with matrices from detail_to_eigen function above
+void boundaryAttrib_to_eigen(const GU_Detail &gdp, Eigen::VectorXi &b, GA_ROHandleF attrib)
+{
+	//given an attribute with boundary values, for all flagged pts b =ptnum and bc = pos(ptnum)
+	//b.resize(static_cast<uint>(gdp.getNumPoints()), 1);
+	std::cout << "in boundary func \n";
+	GA_Offset ptoff;
+	UT_Vector3 pos;
+	int npts = gdp.getNumPoints();
+	std::cout << "b.resize() \n";
+	b.resize(npts);
+	std::cout << "bc.resize()\n";
+	//bc.resize(npts);
+	//b.resize(i);
+	//bc.resize(gdp.getNumPoints(), 3);
+	int i = 0;
+	int j = 0;
+	std::cout << "set length " << npts << "\n";
+	
+	GA_FOR_ALL_PTOFF(&gdp, ptoff) {
+		if (attrib.get(ptoff) > 0) {
+			b(i) = j;
+			std::cout << ptoff;
+			//bc(i) = 1.0;
+			//pos = gdp.getPos3(ptoff);
+			//bc(i, 0) = pos.x();
+			//bc(i, 1) = pos.y();
+			//bc(i, 2) = pos.z();
+			i++;
+		}
+		j++;
+	}
+
+	b.conservativeResize(i);
+	//TODO add error handling
+}
+
 
 void eigen_to_detail(const Eigen::MatrixXd &points, const Eigen::MatrixXi &faces, GU_Detail &gdp)
 {

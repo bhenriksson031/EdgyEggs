@@ -1,16 +1,24 @@
+
 #include <igl/cotmatrix.h>
 #include <igl/invert_diag.h>
 #include <igl/massmatrix.h>
 #include <igl/principal_curvature.h>
+#include <igl/slice.h>
+#include <igl/slice_into.h>
+#include <igl/setdiff.h>
 #include <igl/grad.h>
 #include <igl/parula.h>
 #include <igl/eigs.h>
+#include <igl/min_quad_with_fixed.h>
+
+
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
 #include <GU/GU_Detail.h>
 #include <GU/GU_PrimPoly.h>
+#include <GA/GA_Attribute.h>
 #include <OP/OP_Operator.h>
 #include <OP/OP_AutoLockInputs.h>
 #include <OP/OP_OperatorTable.h>
@@ -31,6 +39,7 @@ static PRM_Name names[] = {
     PRM_Name("grad_attrib_name",   "Scalar Attribute Name"),
     PRM_Name("laplacian",          "Laplacian (Smoothing)"),
     PRM_Name("eigenvectors",       "Eigen Decomposition (Disabled)"),
+	PRM_Name("area_min",          "Area Minimizer"),
 };
 
 static PRM_Range  laplaceRange(PRM_RANGE_PRM, 0, PRM_RANGE_PRM, 10);
@@ -43,6 +52,7 @@ SOP_IGLDiscreteGeometry::myTemplateList[] = {
     PRM_Template(PRM_STRING, 1, &names[3], 0),
     PRM_Template(PRM_INT_J,  1, &names[4], PRMzeroDefaults, 0, &laplaceRange),
     PRM_Template(PRM_INT_J , 1, &names[5], PRMzeroDefaults, 0, &laplaceRange),
+	PRM_Template(PRM_TOGGLE, 1, &names[6], 0),
     PRM_Template(),
 };
 
@@ -156,7 +166,135 @@ int compute_laplacian(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F,
     return Eigen::Success;
 }
 
+int minimize_area(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F,
+	const Eigen::VectorXi& b, Eigen::MatrixXd &Z)
+{
+	// L = Laplacian
+	// boundaryAttrib = point attribute for fixed points
+	// TODO Find and implement minimizing function to perform area minimization (Lagrange Equation)
+	// TODO apply boundaries
+	// TODO MAYBE to match libigl, convert boundaryAttrib to vector. as in: VectorXi b(n_cnstr_points,1); 
+	//from libigl tutorial: https://github.com/libigl/libigl/blob/master/tutorial/304_LinearEqualityConstraints/main.cpp
+
+	// Construct Laplacian and mass matrix
+	Eigen::SparseMatrix<double> L, M, Minv, Q;
+	int i = 0;
+	Eigen::VectorXi all_dims;
+	igl::colon<int>(0, V.cols() - 1, all_dims);
+	std:: cout << i << "\n";
+	i++;
+
+	igl::cotmatrix(V, F, L);
+	std::cout << i << "\n";
+	i++;
+
+	igl::massmatrix(V, F, igl::MASSMATRIX_TYPE_VORONOI, M);
+	std::cout << i << "\n";
+	i++;
+
+	igl::invert_diag(M, Minv);
+	// Bi-Laplacian
+	std::cout << i << "\n";
+	i++;
+	////////// from https://github.com/libigl/libigl/blob/master/tutorial/303_LaplaceEquation/main.cpp
+	// List of all vertex indices
+	Eigen::VectorXi all, in;
+	Eigen::VectorXi IA; // removed b and IC from original
+	igl::colon<int>(0, V.rows() - 1, all);
+	// List of interior indices
+	igl::setdiff(all, b, in, IA);
+
+	// Construct and slice up Laplacian
+	Eigen::SparseMatrix<double> L_in_in, L_in_b;
+	//end of 303_LaplaceEquation
+
+	Q = L * (Minv * L);
+	// Zero linear term
+	std::cout << i << "\n";
+	i++;
+
+	Eigen::MatrixXd B = Eigen::MatrixXd::Zero(V.rows(), 3);
+	std::cout << i << "\n";
+	i++;
+
+	Eigen::MatrixXd bc(b.size(), 3);
+	igl::slice(V, b, all_dims, bc);
+
+	// Alternative, short hand
+	igl::min_quad_with_fixed_data<double> mqwf;
+	// Empty constraints
+	//Eigen::VectorXd Z, Z_const;
+	std::cout << i << "\n";
+	i++;
+	Eigen::VectorXd Beq;
+	Eigen::SparseMatrix<double> Aeq;
+
+	std::cout << i << "\n";
+	i++;
+	//std::cout << "b: " << b<< "\n";
+	std::cout <<"b.size(): "<< b.size() <<"\n";
+	std::cout << "bc.size(): " << bc.size() << "\n";
+	//std::cout << "bc: " << bc << "\n";
+
+	igl::slice(L, in, in, L_in_in);
+	igl::slice(L, in, b, L_in_b);
+
+	// Solve PDE
+	Eigen::SimplicialLLT<Eigen::SparseMatrix<double > > solver(-L_in_in);
+
+	Eigen::MatrixXd Z_in = solver.solve(L_in_b*bc);
+	// slice into solution
+	Z = V;
+	Eigen::MatrixXd V_in_b(b.size(), 3);
+
+	std::cout << "Z_in: " << Z_in<<"\n\n";
+	std::cout << "Z: " << Z_in << "\n\n";
+
+	std::cout << "Z.size(): " << Z.size() << "\n";
+	std::cout << "in: " << in << "\n";
+	std::cout << "slice back solution " << "\n";
+
+	igl::slice_into(Z_in, in, all_dims, Z);
+	std::cout << "Z after (slice into): " << Z_in << "\n";
+	std::cout << "all_dims: " << all_dims << "\n";
+	igl::slice(V, in, all_dims, V_in_b);
+	std::cout << "V_in_b: " << V_in_b << "\n";
+	//alternative 
+	/*
+	igl::min_quad_with_fixed_precompute(Q, b, Aeq, true, mqwf);
+	std::cout << i << "\n";
+	i++;
+	igl::min_quad_with_fixed_solve(mqwf, B, bc, Beq, Z);
+	std::cout << i << "\n";
+	i++;
+	
+	*/
+	return Eigen::Success;
+}
+
 } // end of SOP_IGL namespce
+
+
+
+void constrain_matrix_by_attrib(GU_Detail *gdp, const GA_ROHandleF& sourceAttrib, Eigen::SparseMatrix<double> &mat)
+{
+	std::vector<Eigen::Triplet<double>> triplets;
+	GA_Offset ptoffs;
+	int i = 0;
+	int n_rows = mat.rows();
+	GA_FOR_ALL_PTOFF(gdp, ptoffs) {
+		if (sourceAttrib.get(ptoffs) == 1.0) {
+			for (int j = 0; j<n_rows; ++j) {
+				triplets.push_back({ i,j,0.0 });
+				triplets.push_back({ j,i,0.0 });
+			}
+			triplets.push_back({ i,i,1.0 });
+		}
+		i++;
+	}
+	//if(i==gdp.numPoints()) TODO Print warning!
+	mat.setFromTriplets(triplets.begin(), triplets.end());
+}
 
 OP_Node *
 SOP_IGLDiscreteGeometry::myConstructor(OP_Network *net, const char *name, OP_Operator *op)
@@ -197,7 +335,7 @@ SOP_IGLDiscreteGeometry::cookInputGroups(OP_Context &context, int alone)
 OP_ERROR
 SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
 {
-    
+	std::cout << "cook\n";
     OP_AutoLockInputs inputs(this);
     if (inputs.lock(context) >= UT_ERROR_ABORT)
         return error();
@@ -294,6 +432,64 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
             }
         }
     }
+	
+	else if (AREA_MIN(t) != 0)
+	{
+		//std::cout << "Before area minimizing\n";
+		//get fixed points
+		GA_ROHandleF borderAttrib(gdp, GA_ATTRIB_POINT, "border");
+		if(borderAttrib.isValid())
+		{
+			std::cout << "got attrib, processing\n";
+			//b=boundary pts
+			Eigen::VectorXi b;
+			Eigen::VectorXd bc;
+			std::cout << "boundary attrib\n";
+			SOP_IGL::boundaryAttrib_to_eigen(*gdp, b, borderAttrib);
+			std::cout << "minimizing area\n";
+			Eigen::MatrixXd Z; //U = V; //TODO should be reduntant when op only does one operation
+			SOP_IGL::minimize_area(V, F, b, Z);
+			//std::cout << "Z:\n"<<Z<<"\n";
+			std::cout << "completed func\n";
+			std::cout << "b.size():\n" << b.size();
+			std::cout << "Z.size():\n" << Z.size();
+			std::cout << "V.size():\n" << V.size() << "\n";
+			/*
+			// Start the interrupt server
+			UT_AutoInterrupt boss("Area minimizing...");
+			Eigen::SparseMatrix<double> L2;  //Laplacian matrix?
+			// Compute Laplace-Beltrami operator: #V by #V
+			igl::cotmatrix(V, F, L2);
+			// Area minimizing:
+			//constrain_matrix_by_attrib(gdp, borderAttrib, L2);
+			Eigen::MatrixXd U; U = V;
+			Eigen::MatrixXd T;
+
+			// User interaption/
+			if (boss.wasInterrupted())
+				return error();
+
+			if (SOP_IGL::compute_laplacian(V, F, L2, U) != Eigen::Success) {
+				addWarning(SOP_MESSAGE, "Can't compute laplacian with current geometry.");
+				return error();
+			}
+			*/
+
+			// Copy back to Houdini:
+			GA_Offset ptoff;
+			GA_FOR_ALL_PTOFF(gdp, ptoff)
+			{
+				const GA_Index ptidx = gdp->pointIndex(ptoff);
+				if ((uint)ptidx < V.rows())
+				{
+					const UT_Vector3 pos(Z((uint)ptidx, 0),
+						Z((uint)ptidx, 1),
+						Z((uint)ptidx, 2));
+					gdp->setPos3(ptoff, pos);
+				}
+			}
+		}
+	}
     
     // Thisize_ts won't compile with Eigen > 3.2.8
     #if 1

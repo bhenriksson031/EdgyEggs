@@ -9,6 +9,9 @@
 
 #include <time.h>
 
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
+
 namespace SOP_IGL {
 
 enum deformation_method {
