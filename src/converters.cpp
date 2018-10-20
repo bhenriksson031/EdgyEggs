@@ -120,7 +120,7 @@ void boundaryAttrib_to_eigen(const GU_Detail &gdp, Eigen::VectorXi &b, GA_ROHand
 	GA_FOR_ALL_PTOFF(&gdp, ptoff) {
 		if (attrib.get(ptoff) > 0) {
 			b(i) = j;
-			std::cout << ptoff;
+			std::cout << ptoff <<"\n";
 			//bc(i) = 1.0;
 			//pos = gdp.getPos3(ptoff);
 			//bc(i, 0) = pos.x();

@@ -34,13 +34,13 @@ protected:
 
 private:
     void    getGroups(UT_String &str)        { evalString(str, "group", 0, 0); }
-    int     CURVATURE(fpreal t)              { return evalInt("curvature", 0, t); }
     int     FALSE_CURVE_COLORS(fpreal t)     { return evalInt("false_curve_colors", 0, t); }
     int     GRAD_ATTRIB(fpreal t)            { return evalInt("grad_attrib", 0, t); }
     void    GRAD_ATTRIB_NAME(UT_String &str) { evalString(str,"grad_attrib_name", 0, 0); }
     fpreal  LAPLACIAN(fpreal t)              { return evalFloat("laplacian", 0, t);  }
     int     EIGENVECTORS(fpreal t)           { return evalInt("eigenvectors", 0, t); }
 	int     AREA_MIN (fpreal t)				 { return evalInt("area_min", 0, t); }
+	int     FAIRING (fpreal t)				 { return evalInt("fairing", 0, t); }
 
     /// This is the group of geometry to be manipulated by this SOP and cooked
     /// by the method "cookInputGroups".

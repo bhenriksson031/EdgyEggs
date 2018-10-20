@@ -10,7 +10,7 @@
 #include <igl/parula.h>
 #include <igl/eigs.h>
 #include <igl/min_quad_with_fixed.h>
-
+#include <igl/harmonic.h>
 
 
 #include <Eigen/Dense>
@@ -31,15 +31,19 @@
 #include "SOP_IGLDiscreteGeo.hpp"
 
 using namespace SOP_IGL;
+using Eigen::VectorXi;
+using Eigen::MatrixXd;
+using Eigen::MatrixXi;
+using Eigen::VectorXd;
 
 static PRM_Name names[] = {
-    PRM_Name("curvature",          "Add Principal Curvature"),
     PRM_Name("false_curve_colors", "Add False Curve Colors"),
     PRM_Name("grad_attrib",        "Add Gradient of Attribute (scalar)"),    
     PRM_Name("grad_attrib_name",   "Scalar Attribute Name"),
     PRM_Name("laplacian",          "Laplacian (Smoothing)"),
     PRM_Name("eigenvectors",       "Eigen Decomposition (Disabled)"),
 	PRM_Name("area_min",          "Area Minimizer"),
+	PRM_Name("fairing",          "Fairing"),
 };
 
 static PRM_Range  laplaceRange(PRM_RANGE_PRM, 0, PRM_RANGE_PRM, 10);
@@ -48,19 +52,19 @@ PRM_Template
 SOP_IGLDiscreteGeometry::myTemplateList[] = {
     PRM_Template(PRM_TOGGLE, 1, &names[0], PRMzeroDefaults),
     PRM_Template(PRM_TOGGLE, 1, &names[1], PRMzeroDefaults),
-    PRM_Template(PRM_TOGGLE, 1, &names[2], PRMzeroDefaults),
-    PRM_Template(PRM_STRING, 1, &names[3], 0),
-    PRM_Template(PRM_INT_J,  1, &names[4], PRMzeroDefaults, 0, &laplaceRange),
-    PRM_Template(PRM_INT_J , 1, &names[5], PRMzeroDefaults, 0, &laplaceRange),
+    PRM_Template(PRM_STRING, 1, &names[2], 0),
+    PRM_Template(PRM_INT_J,  1, &names[3], PRMzeroDefaults, 0, &laplaceRange),
+    PRM_Template(PRM_INT_J , 1, &names[4], PRMzeroDefaults, 0, &laplaceRange),
+	PRM_Template(PRM_TOGGLE, 1, &names[5], 0),
 	PRM_Template(PRM_TOGGLE, 1, &names[6], 0),
     PRM_Template(),
 };
 
 namespace SOP_IGL {
-void compute_curvature(GU_Detail *gdp, Eigen::MatrixXd &V, Eigen::MatrixXi &F, const int false_colors=0)
+void compute_curvature(GU_Detail *gdp, MatrixXd &V, MatrixXi &F, const int false_colors=0)
 {
     // Alternative discrete mean curvature
-    Eigen::MatrixXd HN;
+    MatrixXd HN;
     Eigen::SparseMatrix<double> L,M,Minv;
     igl::cotmatrix(V,F,L);
     igl::massmatrix(V,F,igl::MASSMATRIX_TYPE_VORONOI,M);
@@ -68,11 +72,11 @@ void compute_curvature(GU_Detail *gdp, Eigen::MatrixXd &V, Eigen::MatrixXi &F, c
     // Laplace-Beltrami of position
     HN = -Minv*(L*V);
     // Extract magnitude as mean curvature
-    Eigen::VectorXd H = HN.rowwise().norm();
+    VectorXd H = HN.rowwise().norm();
 
     // Compute curvature directions via quadric fitting
-    Eigen::MatrixXd PD1,PD2;
-    Eigen::VectorXd PV1,PV2;
+    MatrixXd PD1,PD2;
+    VectorXd PV1,PV2;
     igl::principal_curvature(V,F,PD1,PD2,PV1,PV2);
     // mean curvature
     H = 0.5*(PV1+PV2);
@@ -100,7 +104,7 @@ void compute_curvature(GU_Detail *gdp, Eigen::MatrixXd &V, Eigen::MatrixXi &F, c
 
     if (false_colors) {
         // Pseudo Colors:
-        Eigen::MatrixXd C;
+        MatrixXd C;
         igl::parula(H,true,C);
         GA_RWHandleV3   color_h(gdp->addFloatTuple(GA_ATTRIB_POINT, "Cd", 3));
         GA_FOR_ALL_PTOFF(gdp, ptoff) { 
@@ -112,10 +116,10 @@ void compute_curvature(GU_Detail *gdp, Eigen::MatrixXd &V, Eigen::MatrixXi &F, c
     }
 }
 
-void compute_gradient(GU_Detail *gdp, const GA_ROHandleF &sourceAttrib, Eigen::MatrixXd &V, Eigen::MatrixXi &F)
+void compute_gradient(GU_Detail *gdp, const GA_ROHandleF &sourceAttrib, MatrixXd &V, MatrixXi &F)
 {
     const uint numPoints = gdp->getNumPoints();
-    Eigen::VectorXd U(numPoints);
+    VectorXd U(numPoints);
     GA_Offset ptoff;
     GA_FOR_ALL_PTOFF(gdp, ptoff) {
         const float val      = sourceAttrib.get(ptoff);
@@ -128,9 +132,9 @@ void compute_gradient(GU_Detail *gdp, const GA_ROHandleF &sourceAttrib, Eigen::M
     igl::grad(V,F,G);
 
     // Compute gradient of U
-    Eigen::MatrixXd GU = Eigen::Map<const Eigen::MatrixXd>((G*U).eval().data(),F.rows(),3);
+    MatrixXd GU = Eigen::Map<const MatrixXd>((G*U).eval().data(),F.rows(),3);
     // Compute gradient magnitude
-    const Eigen::VectorXd GU_mag = GU.rowwise().norm();
+    const VectorXd GU_mag = GU.rowwise().norm();
 
 
     // Copy attributes to Houdini
@@ -150,8 +154,8 @@ void compute_gradient(GU_Detail *gdp, const GA_ROHandleF &sourceAttrib, Eigen::M
     }
 }
 
-int compute_laplacian(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F, 
-                      const Eigen::SparseMatrix<double> &L, Eigen::MatrixXd &U)
+int compute_laplacian(const MatrixXd &V, const MatrixXi &F, 
+                      const Eigen::SparseMatrix<double> &L, MatrixXd &U)
 {
     Eigen::SparseMatrix<double> M;
     igl::massmatrix(U,F,igl::MASSMATRIX_TYPE_BARYCENTRIC, M);
@@ -166,8 +170,8 @@ int compute_laplacian(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F,
     return Eigen::Success;
 }
 
-int minimize_area(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F,
-	const Eigen::VectorXi& b, Eigen::MatrixXd &Z)
+int minimize_area(const MatrixXd &V, const MatrixXi &F,
+	const VectorXi& b, MatrixXd &Z)
 {
 	// L = Laplacian
 	// boundaryAttrib = point attribute for fixed points
@@ -178,28 +182,20 @@ int minimize_area(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F,
 
 	// Construct Laplacian and mass matrix
 	Eigen::SparseMatrix<double> L, M, Minv, Q;
-	int i = 0;
-	Eigen::VectorXi all_dims;
+	VectorXi all_dims;
 	igl::colon<int>(0, V.cols() - 1, all_dims);
-	std:: cout << i << "\n";
-	i++;
 
 	igl::cotmatrix(V, F, L);
-	std::cout << i << "\n";
-	i++;
 
 	igl::massmatrix(V, F, igl::MASSMATRIX_TYPE_VORONOI, M);
-	std::cout << i << "\n";
-	i++;
 
 	igl::invert_diag(M, Minv);
 	// Bi-Laplacian
-	std::cout << i << "\n";
-	i++;
+
 	////////// from https://github.com/libigl/libigl/blob/master/tutorial/303_LaplaceEquation/main.cpp
 	// List of all vertex indices
-	Eigen::VectorXi all, in;
-	Eigen::VectorXi IA; // removed b and IC from original
+	VectorXi all, in;
+	VectorXi IA; // removed b and IC from original
 	igl::colon<int>(0, V.rows() - 1, all);
 	// List of interior indices
 	igl::setdiff(all, b, in, IA);
@@ -210,27 +206,20 @@ int minimize_area(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F,
 
 	Q = L * (Minv * L);
 	// Zero linear term
-	std::cout << i << "\n";
-	i++;
 
-	Eigen::MatrixXd B = Eigen::MatrixXd::Zero(V.rows(), 3);
-	std::cout << i << "\n";
-	i++;
+	MatrixXd B = MatrixXd::Zero(V.rows(), 3);
 
-	Eigen::MatrixXd bc(b.size(), 3);
+	MatrixXd bc(b.size(), 3);
 	igl::slice(V, b, all_dims, bc);
 
 	// Alternative, short hand
 	igl::min_quad_with_fixed_data<double> mqwf;
 	// Empty constraints
-	//Eigen::VectorXd Z, Z_const;
-	std::cout << i << "\n";
-	i++;
-	Eigen::VectorXd Beq;
+	//VectorXd Z, Z_const;
+
+	VectorXd Beq;
 	Eigen::SparseMatrix<double> Aeq;
 
-	std::cout << i << "\n";
-	i++;
 	//std::cout << "b: " << b<< "\n";
 	std::cout <<"b.size(): "<< b.size() <<"\n";
 	std::cout << "bc.size(): " << bc.size() << "\n";
@@ -242,23 +231,22 @@ int minimize_area(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F,
 	// Solve PDE
 	Eigen::SimplicialLLT<Eigen::SparseMatrix<double > > solver(-L_in_in);
 
-	Eigen::MatrixXd Z_in = solver.solve(L_in_b*bc);
+	MatrixXd Z_in = solver.solve(L_in_b*bc);
 	// slice into solution
 	Z = V;
-	Eigen::MatrixXd V_in_b(b.size(), 3);
-
+	MatrixXd V_in_b(b.size(), 3);
+	/*
 	std::cout << "Z_in: " << Z_in<<"\n\n";
 	std::cout << "Z: " << Z_in << "\n\n";
 
 	std::cout << "Z.size(): " << Z.size() << "\n";
 	std::cout << "in: " << in << "\n";
 	std::cout << "slice back solution " << "\n";
-
+	*/
 	igl::slice_into(Z_in, in, all_dims, Z);
-	std::cout << "Z after (slice into): " << Z_in << "\n";
-	std::cout << "all_dims: " << all_dims << "\n";
+
 	igl::slice(V, in, all_dims, V_in_b);
-	std::cout << "V_in_b: " << V_in_b << "\n";
+
 	//alternative 
 	/*
 	igl::min_quad_with_fixed_precompute(Q, b, Aeq, true, mqwf);
@@ -274,8 +262,22 @@ int minimize_area(const Eigen::MatrixXd &V, const Eigen::MatrixXi &F,
 
 } // end of SOP_IGL namespce
 
-
-
+void copy_back_to_houdini(GU_Detail *gdp, MatrixXd &V)
+{
+	// Copy back to Houdini:
+	GA_Offset ptoff;
+	GA_FOR_ALL_PTOFF(gdp, ptoff)
+	{
+		const GA_Index ptidx = gdp->pointIndex(ptoff);
+		if ((uint)ptidx < V.rows())
+		{
+			const UT_Vector3 pos(V((uint)ptidx, 0),
+				V((uint)ptidx, 1),
+				V((uint)ptidx, 2));
+			gdp->setPos3(ptoff, pos);
+		}
+	}
+}
 void constrain_matrix_by_attrib(GU_Detail *gdp, const GA_ROHandleF& sourceAttrib, Eigen::SparseMatrix<double> &mat)
 {
 	std::vector<Eigen::Triplet<double>> triplets;
@@ -347,38 +349,10 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
     gdp->convex(); // only triangles for now.
     uint numPoints = gdp->getNumPoints();
     uint numPrims  = gdp->getNumPrimitives();
-    Eigen::MatrixXd V(numPoints, 3); // points
-    Eigen::MatrixXi F(numPrims, 3); // faces
-
+    MatrixXd V(numPoints, 3); // points
+    MatrixXi F(numPrims, 3); // faces
+	MatrixXd Z;
     SOP_IGL::detail_to_eigen(*gdp, V, F);
-
-    /* Curvature */
-    if(CURVATURE(t)) 
-    {
-        SOP_IGL::compute_curvature(gdp, V, F, FALSE_CURVE_COLORS(t));
-    }
-
-    /* Gradient of an attribute */
-    if (GRAD_ATTRIB(t)) 
-    {
-
-        // Fetch our attribute names
-        UT_String sourceGradAttribName;
-        GRAD_ATTRIB_NAME(sourceGradAttribName);
-
-        if (!sourceGradAttribName.isstring())
-            return error();
-      
-        // Make sure a name is valid.
-        sourceGradAttribName.forceValidVariableName();
-        GA_ROHandleF  sourceGradAttrib_h(gdp->findAttribute(GA_ATTRIB_POINT, sourceGradAttribName));
-        if (sourceGradAttrib_h.isValid()) {
-            SOP_IGL::compute_gradient(gdp, sourceGradAttrib_h, V, F);
-        } else {
-            addWarning(SOP_MESSAGE, "Can't compute a gradient from a given attribute.");
-        }
-    }
-
 
     /*    Laplacian smoothing   */
     const float laplacian = LAPLACIAN(t);
@@ -395,9 +369,9 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
         // Compute Laplace-Beltrami operator: #V by #V
         igl::cotmatrix(V,F,L);
         // Smoothing:
-        Eigen::MatrixXd U; U = V;
-        Eigen::MatrixXd T;
-        T = Eigen::MatrixXd::Zero(V.rows(), V.cols());
+        MatrixXd U; U = V;
+        MatrixXd T;
+        T = MatrixXd::Zero(V.rows(), V.cols());
 
         while(laplacian_iterations) 
         {
@@ -418,19 +392,7 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
             T = U;
         }
 
-        // Copy back to Houdini:
-        GA_Offset ptoff;
-        GA_FOR_ALL_PTOFF(gdp, ptoff) 
-        {
-            const GA_Index ptidx = gdp->pointIndex(ptoff);
-            if ((uint)ptidx < T.rows()) 
-            {
-                const UT_Vector3 pos(T((uint)ptidx, 0),
-                                     T((uint)ptidx, 1),
-                                     T((uint)ptidx, 2));
-                gdp->setPos3(ptoff, pos);
-            }
-        }
+
     }
 	
 	else if (AREA_MIN(t) != 0)
@@ -442,106 +404,55 @@ SOP_IGLDiscreteGeometry::cookMySop(OP_Context &context)
 		{
 			std::cout << "got attrib, processing\n";
 			//b=boundary pts
-			Eigen::VectorXi b;
-			Eigen::VectorXd bc;
+			VectorXi b;
+			VectorXd bc;
 			std::cout << "boundary attrib\n";
 			SOP_IGL::boundaryAttrib_to_eigen(*gdp, b, borderAttrib);
 			std::cout << "minimizing area\n";
-			Eigen::MatrixXd Z; //U = V; //TODO should be reduntant when op only does one operation
 			SOP_IGL::minimize_area(V, F, b, Z);
-			//std::cout << "Z:\n"<<Z<<"\n";
-			std::cout << "completed func\n";
-			std::cout << "b.size():\n" << b.size();
-			std::cout << "Z.size():\n" << Z.size();
-			std::cout << "V.size():\n" << V.size() << "\n";
-			/*
-			// Start the interrupt server
-			UT_AutoInterrupt boss("Area minimizing...");
-			Eigen::SparseMatrix<double> L2;  //Laplacian matrix?
-			// Compute Laplace-Beltrami operator: #V by #V
-			igl::cotmatrix(V, F, L2);
-			// Area minimizing:
-			//constrain_matrix_by_attrib(gdp, borderAttrib, L2);
-			Eigen::MatrixXd U; U = V;
-			Eigen::MatrixXd T;
 
-			// User interaption/
-			if (boss.wasInterrupted())
-				return error();
-
-			if (SOP_IGL::compute_laplacian(V, F, L2, U) != Eigen::Success) {
-				addWarning(SOP_MESSAGE, "Can't compute laplacian with current geometry.");
-				return error();
-			}
-			*/
+			//std::cout << "completed func\n";
+			//std::cout << "b.size():\n" << b.size();
+			//std::cout << "Z.size():\n" << Z.size();
+			//std::cout << "V.size():\n" << V.size() << "\n";
 
 			// Copy back to Houdini:
-			GA_Offset ptoff;
-			GA_FOR_ALL_PTOFF(gdp, ptoff)
-			{
-				const GA_Index ptidx = gdp->pointIndex(ptoff);
-				if ((uint)ptidx < V.rows())
-				{
-					const UT_Vector3 pos(Z((uint)ptidx, 0),
-						Z((uint)ptidx, 1),
-						Z((uint)ptidx, 2));
-					gdp->setPos3(ptoff, pos);
-				}
-			}
+			copy_back_to_houdini(gdp, Z);
 		}
 	}
-    
-    // Thisize_ts won't compile with Eigen > 3.2.8
-    #if 1
-    /*  Eigen decompositon*/
-    const size_t eigenvectors = EIGENVECTORS(t);
-    if (eigenvectors != 0) 
-    {
-        Eigen::SparseMatrix<double> L, M;
-        igl::cotmatrix(V,F,L);
-        L = (-L).eval();
 
-        igl::massmatrix(V, F, igl::MASSMATRIX_TYPE_DEFAULT, M);
-        int c = 0;
-        bool  twod = V.col(2).minCoeff()==V.col(2).maxCoeff();
-        double bbd = (V.colwise().maxCoeff()-V.colwise().minCoeff()).norm();
+	if (FAIRING(t) != 0)
+	{
 
-        const size_t k = eigenvectors;
-        Eigen::VectorXd D;
-        Eigen::MatrixXd U;
-        if(!igl::eigs(L, M, k+1, igl::EIGS_TYPE_SM, U, D)) {
-            addWarning(SOP_MESSAGE, "Can't compute eigen decomposition.");
-            return error();
-        }
+		//std::cout << "Before area minimizing\n";
+		//get fixed points
+		//TODO convert process to use prim group
+		GA_ROHandleF borderAttrib(gdp, GA_ATTRIB_POINT, "boundary");
+		if (borderAttrib.isValid())
+		{
+			std::cout << "got attrib, processing\n";
+			// b=boundary pts, bc= boundary constraints (b positions)
+			VectorXi b;
+			std::cout << "boundary attrib\n";
+			SOP_IGL::boundaryAttrib_to_eigen(*gdp, b, borderAttrib);
+			//get boundary positions into bc
+			//TODO separate bc creation to func
+			MatrixXd bc(b.size(), 3);
+			VectorXi all_dims;
+			igl::colon<int>(0, V.cols() - 1, all_dims);
+			igl::slice(V, b, all_dims, bc);
+			//solve
+			int k = 2;
+			if (igl::harmonic(V, F, b, bc, k, Z)) {
+				// Copy back to Houdini:
+				copy_back_to_houdini(gdp, Z);
+			}
+			else{
+				std::cout << "failed to solve mesh fairing\n";
+			}
 
-        U = ((U.array()-U.minCoeff())/(U.maxCoeff()-U.minCoeff())).eval();
-        U = U.rightCols(k).eval();
-        std::cout << U << '\n';
-
-        // Rescale eigen vectors for visualization
-        Eigen::VectorXd Z = bbd*0.5*U.col(c);
-        Eigen::MatrixXd C;
-        igl::parula(U.col(c).eval(),false,C);
-        GA_Attribute * cd_a = gdp->addFloatTuple(GA_ATTRIB_POINT, "Cd", 3);
-        GA_RWHandleV3 cd_h(cd_a);
-        GA_Offset ptoff;
-        GA_FOR_ALL_PTOFF(gdp, ptoff) {
-            const GA_Index ptidx = gdp->pointIndex(ptoff);
-            if ((uint)ptidx < C.rows()) 
-            {
-                const UT_Vector3 clr(C((uint)ptidx, 0),
-                                     C((uint)ptidx, 1),
-                                     C((uint)ptidx, 2));
-                cd_h.set(ptoff, clr);
-            }
-        }
-    }
-
-    #endif
-
-
-
-    
+		}
+	}
 
     gdp->getP()->bumpDataId();
     return error();

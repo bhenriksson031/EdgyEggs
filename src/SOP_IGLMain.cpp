@@ -1,14 +1,16 @@
 
 #include <UT/UT_DSOVersion.h>
 #include <OP/OP_OperatorTable.h>
-#include "SOP_IGLUVproject.hpp"
+//#include "SOP_IGLUVproject.hpp"
 #include "SOP_IGLDiscreteGeo.hpp"
-#include "SOP_IGLDeform.hpp"
+//#include "SOP_IGLDeform.hpp"
 //#include <libShapeOp/src/Solver.h>
 //#include "SOP_ShapeOp.hpp"
 //#include "SOP_Eltopo.hpp"
 
 using namespace SOP_IGL;
+
+
 //using namespace SOP_SHAPEOP;
 //using namespace SOP_ELTOPO;
 
@@ -24,7 +26,7 @@ newSopOperator(OP_OperatorTable *table)
         1,
         0));
 
-
+/*
     table->addOperator(new OP_Operator(
         "igluvproject",
         "EE IGL UVProject",
@@ -42,7 +44,7 @@ newSopOperator(OP_OperatorTable *table)
         2,
         3,
         0));
-
+		*/
 /*
 	 table->addOperator(new OP_Operator(
         "shapeop",
