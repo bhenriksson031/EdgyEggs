@@ -103,24 +103,24 @@ void boundaryAttrib_to_eigen(const GU_Detail &gdp, Eigen::VectorXi &b, GA_ROHand
 {
 	//given an attribute with boundary values, for all flagged pts b =ptnum and bc = pos(ptnum)
 	//b.resize(static_cast<uint>(gdp.getNumPoints()), 1);
-	std::cout << "in boundary func \n";
+	//std::cout << "in boundary func \n";
 	GA_Offset ptoff;
 	UT_Vector3 pos;
 	int npts = gdp.getNumPoints();
-	std::cout << "b.resize() \n";
+	//std::cout << "b.resize() \n";
 	b.resize(npts);
-	std::cout << "bc.resize()\n";
+	//std::cout << "bc.resize()\n";
 	//bc.resize(npts);
 	//b.resize(i);
 	//bc.resize(gdp.getNumPoints(), 3);
 	int i = 0;
 	int j = 0;
-	std::cout << "set length " << npts << "\n";
+	//std::cout << "set length " << npts << "\n";
 	
 	GA_FOR_ALL_PTOFF(&gdp, ptoff) {
 		if (attrib.get(ptoff) > 0) {
 			b(i) = j;
-			std::cout << ptoff <<"\n";
+			//std::cout << ptoff <<"\n";
 			//bc(i) = 1.0;
 			//pos = gdp.getPos3(ptoff);
 			//bc(i, 0) = pos.x();

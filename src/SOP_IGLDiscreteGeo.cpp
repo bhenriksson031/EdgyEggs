@@ -37,9 +37,6 @@ using Eigen::MatrixXi;
 using Eigen::VectorXd;
 
 static PRM_Name names[] = {
-    PRM_Name("false_curve_colors", "Add False Curve Colors"),
-    PRM_Name("grad_attrib",        "Add Gradient of Attribute (scalar)"),    
-    PRM_Name("grad_attrib_name",   "Scalar Attribute Name"),
     PRM_Name("laplacian",          "Laplacian (Smoothing)"),
     PRM_Name("eigenvectors",       "Eigen Decomposition (Disabled)"),
 	PRM_Name("area_min",          "Area Minimizer"),
@@ -50,13 +47,10 @@ static PRM_Range  laplaceRange(PRM_RANGE_PRM, 0, PRM_RANGE_PRM, 10);
 
 PRM_Template
 SOP_IGLDiscreteGeometry::myTemplateList[] = {
-    PRM_Template(PRM_TOGGLE, 1, &names[0], PRMzeroDefaults),
-    PRM_Template(PRM_TOGGLE, 1, &names[1], PRMzeroDefaults),
-    PRM_Template(PRM_STRING, 1, &names[2], 0),
-    PRM_Template(PRM_INT_J,  1, &names[3], PRMzeroDefaults, 0, &laplaceRange),
-    PRM_Template(PRM_INT_J , 1, &names[4], PRMzeroDefaults, 0, &laplaceRange),
-	PRM_Template(PRM_TOGGLE, 1, &names[5], 0),
-	PRM_Template(PRM_TOGGLE, 1, &names[6], 0),
+    PRM_Template(PRM_INT_J,  1, &names[0], PRMzeroDefaults, 0, &laplaceRange),
+    PRM_Template(PRM_INT_J , 1, &names[1], PRMzeroDefaults, 0, &laplaceRange),
+	PRM_Template(PRM_TOGGLE, 1, &names[2], 0),
+	PRM_Template(PRM_TOGGLE, 1, &names[3], 0),
     PRM_Template(),
 };
 
